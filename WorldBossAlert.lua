@@ -388,18 +388,19 @@ local function wbaClockIn(bossName)
     local group = def and def.group or bossName
     local where = wbaZone()
 
-    -- Warn locally if parked in the wrong zone, but still send clock-in
+    -- Hard zone gate: wrong zone = local warning only, no channel message
     if not wbaZoneOk(bossName) then
         local expected = (def and def.zones and table.getn(def.zones) > 0)
             and table.concat(def.zones, "/") or "unknown"
         wbaPrint(string.format(
-            "|cFFFF8800Zone warning:|r %s is expected in [%s] but you are in [%s].",
+            "|cFFFF4444Zone mismatch:|r Cannot clock in for %s -- expected [%s] but you are in [%s].",
             group, expected, where))
+        return
     end
 
     local msg = string.format("Main: %s is now watching %s [%s]", wbaScoutIdent(), group, where)
     if wbaIsLowLevel() then
-        wbaPrint("|cFFFF8800[Low level]|r Sending clock-in to OFFICER.")
+        wbaPrint("|cFFFF8800[Low level]|r Sending clock-in to GUILD.")
     end
     wbaSendScout(msg)
     wbaPrint("Clocked in for: " .. group)
@@ -407,6 +408,16 @@ local function wbaClockIn(bossName)
 end
 
 local function wbaClockOut(group)
+    -- Only send if we had a real assignment (wbaScoutBoss set) and are in the right zone
+    -- If group is "All" and wbaScoutBoss is nil, this was a spurious call - suppress it
+    if not wbaScoutBoss and (group == "All" or group == nil) then
+        return
+    end
+    -- Zone gate: only send if still in the correct zone for the boss we were watching
+    if wbaScoutBoss and not wbaZoneOk(wbaScoutBoss) then
+        wbaPrint("Clock-out suppressed: not in expected zone.")
+        return
+    end
     local where = wbaZone()
     local msg   = string.format("Main: %s has stopped watching %s [%s]", wbaScoutIdent(), group or "All", where)
     wbaSendScout(msg)
@@ -416,6 +427,11 @@ end
 -- Sends a "still watching" heartbeat to the scout channel every 30 minutes
 -- Low level scouts send to GUILD instead
 local function wbaHeartbeat()
+    -- Zone gate: only send heartbeat if still in the correct zone
+    if wbaScoutBoss and not wbaZoneOk(wbaScoutBoss) then
+        wbaPrint("Heartbeat suppressed: not in expected zone for " .. wbaScoutBoss .. ".")
+        return
+    end
     local where = wbaZone()
     local group = "All"
     if wbaScoutBoss then
@@ -622,6 +638,16 @@ local function wbaCheck(attacker, evtType)
     if WBA_TARGET_SET[attacker] and not string.find(evtType, "HOSTILEPLAYER") then
         -- Only fire from combat events if scouting is on
         if wbaScouting then
+            -- Zone gate: if boss has expected zones and we're not in one, skip
+            if not wbaZoneOk(attacker) then
+                local def = WBA_BOSSES[attacker]
+                local expected = (def and def.zones and table.getn(def.zones) > 0)
+                    and table.concat(def.zones, "/") or "unknown"
+                wbaPrint(string.format(
+                    "|cFFFF4444Zone mismatch:|r %s expected in [%s] but you are in [%s]. No alert sent.",
+                    attacker, expected, wbaZone()))
+                return
+            end
             local now = GetTime()
             if not wbaScanLast[attacker] or (now - wbaScanLast[attacker]) > wbaScanCooldown then
                 wbaScanLast[attacker] = now
@@ -738,6 +764,7 @@ local function wbaOnEvent()
         or event == "CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES" then
 
         if wbaBroadcasted then return end
+        if not arg1 then return end
         local attacker = string.match(arg1, "(.+) hits you")
                       or string.match(arg1, "(.+) misses you")
                       or string.match(arg1, "(.+) attacks%. You dodge%.")
@@ -746,6 +773,7 @@ local function wbaOnEvent()
 
     elseif event == "CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE" then
         if wbaBroadcasted then return end
+        if not arg1 then return end
         local attacker = string.match(arg1, "(.+)'s")
         if attacker then
             wbaCheck(attacker, event)
@@ -1125,9 +1153,11 @@ wbaClockInBtn:SetScript("OnClick", function()
     end
     local group = wbaBossGroups[wbaBossIndex]  -- nil = index 0 = "All"
     if group then
-        for bossName, def in pairs(WBA_BOSSES) do
-            if def.group == group then
-                wbaScoutBoss = bossName
+        for bossName, bdef in pairs(WBA_BOSSES) do
+            if bdef.group == group then
+                if wbaZoneOk(bossName) then
+                    wbaScoutBoss = bossName
+                end
                 wbaClockIn(bossName)
                 break
             end
