@@ -1,8 +1,8 @@
 ## Interface: 11200
 ## Title: WorldBossAlert
-## Notes: Simplifies scouting for world bosses.
-## Author: Numielle
-## Version: 1.0
+## Notes: Fully build out automation for scouting and raid leading.
+## Author: Humak
+## Version: 1.01
 ## Dependencies:
 ## SavedVariables: WorldBossAlertDB
 
