@@ -185,6 +185,14 @@ local function wbaFlag(flag)
     if flag then return "|cFF00FF00ON|r" else return "|cFFFF4444OFF|r" end
 end
 
+-- Lua 5.0 does not have string.match. This helper extracts the first capture
+-- from string.find, equivalent to string.match in Lua 5.1+
+local function wbaMatch(str, pattern)
+    if not str then return nil end
+    local _, _, cap = string.find(str, pattern)
+    return cap
+end
+
 local function wbaZone()
     local zone = GetZoneText() or ""
     local sub  = (GetSubZoneText and GetSubZoneText()) or ""
@@ -765,16 +773,16 @@ local function wbaOnEvent()
 
         if wbaBroadcasted then return end
         if not arg1 then return end
-        local attacker = string.match(arg1, "(.+) hits you")
-                      or string.match(arg1, "(.+) misses you")
-                      or string.match(arg1, "(.+) attacks%. You dodge%.")
+        local attacker = wbaMatch(arg1, "(.+) hits you")
+                      or wbaMatch(arg1, "(.+) misses you")
+                      or wbaMatch(arg1, "(.+) attacks%. You dodge%.")
         wbaCheck(attacker, event)
         wbaBroadcasted = true
 
     elseif event == "CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE" then
         if wbaBroadcasted then return end
         if not arg1 then return end
-        local attacker = string.match(arg1, "(.+)'s")
+        local attacker = wbaMatch(arg1, "(.+)'s")
         if attacker then
             wbaCheck(attacker, event)
             wbaBroadcasted = true
@@ -813,12 +821,12 @@ local function wbaOnEvent()
         -- "You receive loot: |cFFxxxxxx|Hitem:...|h[ItemName]|h|r."
         -- We match the item name from inside |h[ItemName]|h
         if string.find(arg1, "You receive loot:") then
-            item   = string.match(arg1, "|h%[(.-)%]|h")
+            item   = wbaMatch(arg1, "|h%[(.-)%]|h")
             looter = UnitName("player")
         else
             -- "PlayerName receives loot: |cFF...|h[ItemName]|h|r."
-            looter = string.match(arg1, "(.+) receives loot:")
-            item   = string.match(arg1, "|h%[(.-)%]|h")
+            looter = wbaMatch(arg1, "(.+) receives loot:")
+            item   = wbaMatch(arg1, "|h%[(.-)%]|h")
         end
 
         if wbaDebugMode then
@@ -852,8 +860,8 @@ local function wbaOnEvent()
             wbaPrint("|cFFFF8800[DEBUG death]|r " .. (arg1 or "nil") .. " raidMode=" .. tostring(wbaRaidMode) .. " debugMode=" .. tostring(wbaDebugMode))
         end
         if not wbaRaidMode and not wbaDebugMode then return end
-        local bossName = string.match(arg1, "(.+) dies%.")
-                      or string.match(arg1, "You have slain (.+)!")
+        local bossName = wbaMatch(arg1, "(.+) dies%.")
+                      or wbaMatch(arg1, "You have slain (.+)!")
         if bossName then
             local isMatch = (wbaDebugMode and wbaDebugBoss and bossName == wbaDebugBoss)
                          or (not wbaDebugMode and WBA_TARGET_SET[bossName])
