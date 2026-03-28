@@ -30,24 +30,28 @@ local WBA_BOSSES = {
         group   = "Emerald Dragon",
         quite   = false,
         mention = "@4-Dragons",
+        checkTapped = true,
     },
     ["Lethon"] = {
         zones   = {"Hinterlands"},
         group   = "Emerald Dragon",
         quite   = false,
         mention = "@4-Dragons",
+        checkTapped = true,
     },
     ["Emeriss"] = {
         zones   = {"Feralas"},
         group   = "Emerald Dragon",
         quite   = false,
         mention = "@4-Dragons",
+        checkTapped = true,
     },
     ["Taerar"] = {
         zones   = {"Ashenvale"},
         group   = "Emerald Dragon",
         quite   = false,
         mention = "@4-Dragons",
+        checkTapped = true,
     },
     -- Open-world elites
     ["Azuregos"] = {
