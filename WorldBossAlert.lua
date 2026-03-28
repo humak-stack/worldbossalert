@@ -70,7 +70,7 @@ local WBA_BOSSES = {
         mention = "@Reaver",
     },
     ["Concavious"] = {
-        zones   = {"Shadowbreak Ravine"},
+        zones   = {"Desolace"},
         group   = "Concavious",
         quite   = false,
         mention = "@Concavious",
@@ -212,15 +212,48 @@ local function wbaScoutIdent()
 end
 
 -- Check whether current zone matches a boss's expected zones.
--- Returns true (correct), false (wrong zone), or true (no zones defined = no check).
+-- Checks both GetZoneText() and GetSubZoneText() against the zones list.
 local function wbaZoneOk(bossName)
     local def = WBA_BOSSES[bossName]
     if not def or not def.zones or table.getn(def.zones) == 0 then return true end
-    local current = GetZoneText() or ""
+    local zone = GetZoneText() or ""
+    local sub  = (GetSubZoneText and GetSubZoneText()) or ""
     for _, z in ipairs(def.zones) do
-        if z == current then return true end
+        if z == zone or z == sub then return true end
     end
     return false
+end
+
+-- Check whether current zone is valid for ANY boss in a group.
+-- Used for Emerald Dragons where each dragon has a different zone.
+local function wbaZoneOkForGroup(groupName)
+    local current = GetZoneText() or ""
+    local sub     = (GetSubZoneText and GetSubZoneText()) or ""
+    for bossName, def in pairs(WBA_BOSSES) do
+        if def.group == groupName then
+            if not def.zones or table.getn(def.zones) == 0 then return true end
+            for _, z in ipairs(def.zones) do
+                if z == current or z == sub then return true end
+            end
+        end
+    end
+    return false
+end
+
+-- Find which specific boss in a group matches the current zone
+local function wbaFindBossForCurrentZone(groupName)
+    local current = GetZoneText() or ""
+    local sub     = (GetSubZoneText and GetSubZoneText()) or ""
+    for bossName, def in pairs(WBA_BOSSES) do
+        if def.group == groupName then
+            if def.zones and table.getn(def.zones) > 0 then
+                for _, z in ipairs(def.zones) do
+                    if z == current or z == sub then return bossName end
+                end
+            end
+        end
+    end
+    return nil
 end
 
 -- Send to a custom channel by name.
@@ -1161,14 +1194,21 @@ wbaClockInBtn:SetScript("OnClick", function()
     end
     local group = wbaBossGroups[wbaBossIndex]  -- nil = index 0 = "All"
     if group then
-        for bossName, bdef in pairs(WBA_BOSSES) do
-            if bdef.group == group then
-                if wbaZoneOk(bossName) then
-                    wbaScoutBoss = bossName
-                end
-                wbaClockIn(bossName)
-                break
+        -- For groups with multiple members (e.g. Emerald Dragons), find the boss
+        -- whose zone matches the current zone rather than picking arbitrarily
+        local targetBoss = wbaFindBossForCurrentZone(group)
+        if targetBoss then
+            -- Zone matched a specific boss in this group
+            wbaScoutBoss = targetBoss
+            wbaClockIn(targetBoss)
+        else
+            -- No zone match for any boss in this group
+            -- Pick any boss to get the group name for the error message
+            local anyBoss = nil
+            for bossName, bdef in pairs(WBA_BOSSES) do
+                if bdef.group == group then anyBoss = bossName break end
             end
+            if anyBoss then wbaClockIn(anyBoss) end  -- will print zone mismatch
         end
     else
         wbaScoutBoss = nil
