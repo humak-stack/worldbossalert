@@ -24,34 +24,30 @@ local WBA_LOOT_CHANNEL   = "tkVfVD7lNviV321778G5W8"
 --    mention – @tag appended to alert messages
 -------------------------------------------------------------------------------
 local WBA_BOSSES = {
-    -- World Dragons (all share one logical group)
+    -- World Dragons — can spawn in any of the four zones, assignment is random each reset
     ["Ysondre"] = {
-        zones   = {"Duskwood"},
+        zones   = {"Duskwood", "Hinterlands", "Feralas", "Ashenvale"},
         group   = "Emerald Dragon",
         quite   = false,
         mention = "@4-Dragons",
-        checkTapped = true,
     },
     ["Lethon"] = {
-        zones   = {"Hinterlands"},
+        zones   = {"Duskwood", "Hinterlands", "Feralas", "Ashenvale"},
         group   = "Emerald Dragon",
         quite   = false,
         mention = "@4-Dragons",
-        checkTapped = true,
     },
     ["Emeriss"] = {
-        zones   = {"Feralas"},
+        zones   = {"Duskwood", "Hinterlands", "Feralas", "Ashenvale"},
         group   = "Emerald Dragon",
         quite   = false,
         mention = "@4-Dragons",
-        checkTapped = true,
     },
     ["Taerar"] = {
-        zones   = {"Ashenvale"},
+        zones   = {"Duskwood", "Hinterlands", "Feralas", "Ashenvale"},
         group   = "Emerald Dragon",
         quite   = false,
         mention = "@4-Dragons",
-        checkTapped = true,
     },
     -- Open-world elites
     ["Azuregos"] = {
@@ -74,7 +70,7 @@ local WBA_BOSSES = {
         mention = "@Reaver",
     },
     ["Concavious"] = {
-        zones   = {"Desolace"},
+        zones   = {"Shadowbreak Ravine"},
         group   = "Concavious",
         quite   = false,
         mention = "@Concavious",
