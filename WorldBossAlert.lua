@@ -29,55 +29,55 @@ local WBA_BOSSES = {
         zones       = {"Duskwood", "The Hinterlands", "Feralas", "Ashenvale"},
         group       = "Emerald Dragon",
         quite       = false,
-        mention     = "@4Dragons",
+        mention     = "<@&1485416058742374580>",
         checkTapped = true,
     },
     ["Lethon"] = {
         zones       = {"Duskwood", "The Hinterlands", "Feralas", "Ashenvale"},
         group       = "Emerald Dragon",
         quite       = false,
-        mention     = "@4Dragons",
+        mention     = "<@&1485416058742374580>",
         checkTapped = true,
     },
     ["Emeriss"] = {
         zones       = {"Duskwood", "The Hinterlands", "Feralas", "Ashenvale"},
         group       = "Emerald Dragon",
         quite       = false,
-        mention     = "@4Dragons",
+        mention     = "<@&1485416058742374580>",
         checkTapped = true,
     },
     ["Taerar"] = {
         zones       = {"Duskwood", "The Hinterlands", "Feralas", "Ashenvale"},
         group       = "Emerald Dragon",
         quite       = false,
-        mention     = "@4Dragons",
+        mention     = "<@&1485416058742374580>",
         checkTapped = true,
     },
     -- Open-world elites
     ["Azuregos"] = {
-        zones      = {"Azshara"},
-        group      = "Azuregos",
-        quite      = false,
-        mention    = "@Azuregos",
+        zones       = {"Azshara"},
+        group       = "Azuregos",
+        quite       = false,
+        mention     = "<@&1485406832141795358>",
         checkTapped = true,
     },
     ["Lord Kazzak"] = {
         zones   = {"Blasted Lands"},
         group   = "Lord Kazzak",
         quite   = false,
-        mention = "@Kazzak",
+        mention = "<@&1485416565993115748>",
     },
     ["Dark Reaver of Karazhan"] = {
         zones   = {"Deadwind Pass"},
         group   = "Dark Reaver of Karazhan",
         quite   = false,
-        mention = "@Reaver",
+        mention = "<@&1485416745916436510>",
     },
     ["Concavious"] = {
         zones   = {"Shadowbreak Ravine"},
         group   = "Concavious",
         quite   = false,
-        mention = "@Concavious",
+        mention = "<@&1485416881786720386>",
     },
     -- Quiet / secondary targets (guild only, no mention)
     ["Admiral Barean Westwind"] = {
@@ -105,7 +105,7 @@ local WBA_BOSSES = {
         zones   = {"Moomoo Grove"},
         group   = "Moo",
         quite   = false,
-        mention = "@Moo",
+        mention = "<@&1485417010681745528>",
     },
 }
 
@@ -154,7 +154,7 @@ local wbaHeartbeatTimer    = 0
 -- pending login clock-in — fires 30s after PLAYER_ENTERING_WORLD
 local wbaLoginPending = false
 local wbaLoginTimer   = 0
-local wbaLoginDelay   = 30
+local wbaLoginDelay   = 10
 
 -- per-boss alert cooldown (seconds)
 local wbaScanCooldown = 900
@@ -719,23 +719,26 @@ local function wbaOnEvent()
             WorldBossAlertDB = {
                 scouting  = false,
                 raidMode  = false,
-                scoutBoss = nil,
                 pvp       = false,
                 death     = false,
                 mainName  = nil,
                 debugMode = false,
                 zgMode    = false,
+                chars     = {},
             }
         end
+        if not WorldBossAlertDB.chars then
+            WorldBossAlertDB.chars = {}
+        end
 
-        -- Migrate old keys if upgrading from previous version
+        -- Migrate old keys
         if WorldBossAlertDB.wbScouting ~= nil and WorldBossAlertDB.scouting == nil then
             WorldBossAlertDB.scouting = WorldBossAlertDB.wbScouting
         end
 
         wbaScouting  = WorldBossAlertDB.scouting  or false
         wbaRaidMode  = WorldBossAlertDB.raidMode  or false
-        wbaScoutBoss = WorldBossAlertDB.scoutBoss or nil
+        wbaScoutBoss = nil  -- loaded per-character in PLAYER_ENTERING_WORLD
         wbaPvp       = WorldBossAlertDB.pvp       or false
         wbaDeath     = WorldBossAlertDB.death      or false
         wbaMainName  = WorldBossAlertDB.mainName  or nil
@@ -772,9 +775,6 @@ local function wbaOnEvent()
         if wbaDebugMode then statusMsg = statusMsg .. "  Debug: " .. wbaFlag(wbaDebugMode) end
         statusMsg = statusMsg .. levelNote
         wbaPrint(statusMsg)
-        if wbaScoutBoss then
-            wbaPrint("Watching: " .. wbaScoutBoss)
-        end
         if wbaMainName then
             wbaPrint("Main set to: " .. wbaMainName)
         end
@@ -785,17 +785,35 @@ local function wbaOnEvent()
     elseif event == "PLAYER_LOGOUT" then
         WorldBossAlertDB.scouting  = wbaScouting
         WorldBossAlertDB.raidMode  = wbaRaidMode
-        WorldBossAlertDB.scoutBoss = wbaScoutBoss
         WorldBossAlertDB.pvp       = wbaPvp
         WorldBossAlertDB.death     = wbaDeath
         WorldBossAlertDB.mainName  = wbaMainName
         WorldBossAlertDB.debugMode = wbaDebugMode
         WorldBossAlertDB.zgMode    = wbaZGMode
+        -- Save scoutBoss per character
+        local charName = UnitName("player") or "Unknown"
+        if not WorldBossAlertDB.chars then WorldBossAlertDB.chars = {} end
+        if not WorldBossAlertDB.chars[charName] then WorldBossAlertDB.chars[charName] = {} end
+        WorldBossAlertDB.chars[charName].scoutBoss = wbaScoutBoss
 
     -----------------------------------------------------------------------
-    -- PLAYER ENTERING WORLD  –  start 30s login clock-in timer
+    -- PLAYER ENTERING WORLD  –  load char data, start login clock-in timer
     -----------------------------------------------------------------------
     elseif event == "PLAYER_ENTERING_WORLD" then
+        -- UnitName is valid here — load per-character scoutBoss
+        local charName = UnitName("player") or "Unknown"
+        if not WorldBossAlertDB.chars then WorldBossAlertDB.chars = {} end
+        local charData = WorldBossAlertDB.chars[charName] or {}
+        -- Migrate old account-level scoutBoss to this character if present
+        if WorldBossAlertDB.scoutBoss ~= nil and charData.scoutBoss == nil then
+            charData.scoutBoss = WorldBossAlertDB.scoutBoss
+            WorldBossAlertDB.scoutBoss = nil
+            WorldBossAlertDB.chars[charName] = charData
+        end
+        wbaScoutBoss = charData.scoutBoss or nil
+        if wbaScoutBoss then
+            wbaPrint("Watching: " .. wbaScoutBoss)
+        end
         if wbaScouting then
             wbaLoginPending = true
             wbaLoginTimer   = 0
@@ -1139,6 +1157,26 @@ local function wbaRefreshBossDisplay()
     wbaBossDisplay:SetText("|cFF00CCFF" .. label .. "|r")
 end
 
+-- Sync the boss selector index to match the currently saved wbaScoutBoss
+local function wbaSyncBossDisplay()
+    if not wbaScoutBoss then
+        wbaBossIndex = 0
+    else
+        local def = WBA_BOSSES[wbaScoutBoss]
+        local group = def and def.group or nil
+        wbaBossIndex = 0  -- default to All if not found
+        if group then
+            for i = 1, table.getn(wbaBossGroups) do
+                if wbaBossGroups[i] == group then
+                    wbaBossIndex = i
+                    break
+                end
+            end
+        end
+    end
+    wbaRefreshBossDisplay()
+end
+
 local wbaBossPrevBtn = CreateFrame("Button", nil, WBAPanel, "GameMenuButtonTemplate")
 wbaBossPrevBtn:SetWidth(24)
 wbaBossPrevBtn:SetHeight(20)
@@ -1415,7 +1453,7 @@ end)
 WBAPanel:SetScript("OnShow", function()
     wbaRefreshScoutBtn()
     wbaRefreshRaidBtn()
-    wbaRefreshBossDisplay()
+    wbaSyncBossDisplay()
     wbaMainInput:SetText(wbaMainName or "")
     wbaRefreshStatus()
 end)
