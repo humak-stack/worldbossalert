@@ -2,7 +2,7 @@
 ## Title: WorldBossAlert
 ## Notes: Fully build out automation for scouting and raid leading.
 ## Author: Humak
-## Version: 1.07
+## Version: 1.08
 ## Dependencies:
 ## SavedVariables: WorldBossAlertDB
 
