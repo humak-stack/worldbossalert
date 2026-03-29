@@ -26,28 +26,28 @@ local WBA_LOOT_CHANNEL   = "tkVfVD7lNviV321778G5W8"
 local WBA_BOSSES = {
     -- World Dragons — can spawn in any of the four zones, assignment is random each reset
     ["Ysondre"] = {
-        zones       = {"Duskwood", "Hinterlands", "Feralas", "Ashenvale"},
+        zones       = {"Duskwood", "The Hinterlands", "Feralas", "Ashenvale"},
         group       = "Emerald Dragon",
         quite       = false,
         mention     = "@4Dragons",
         checkTapped = true,
     },
     ["Lethon"] = {
-        zones       = {"Duskwood", "Hinterlands", "Feralas", "Ashenvale"},
+        zones       = {"Duskwood", "The Hinterlands", "Feralas", "Ashenvale"},
         group       = "Emerald Dragon",
         quite       = false,
         mention     = "@4Dragons",
         checkTapped = true,
     },
     ["Emeriss"] = {
-        zones       = {"Duskwood", "Hinterlands", "Feralas", "Ashenvale"},
+        zones       = {"Duskwood", "The Hinterlands", "Feralas", "Ashenvale"},
         group       = "Emerald Dragon",
         quite       = false,
         mention     = "@4Dragons",
         checkTapped = true,
     },
     ["Taerar"] = {
-        zones       = {"Duskwood", "Hinterlands", "Feralas", "Ashenvale"},
+        zones       = {"Duskwood", "The Hinterlands", "Feralas", "Ashenvale"},
         group       = "Emerald Dragon",
         quite       = false,
         mention     = "@4Dragons",
