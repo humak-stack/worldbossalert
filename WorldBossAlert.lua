@@ -74,7 +74,7 @@ local WBA_BOSSES = {
         mention = "<@&1485416745916436510>",
     },
     ["Concavious"] = {
-        zones   = {"Shadowbreak Ravine"},
+        zones   = {"Desolace"},
         group   = "Concavious",
         quite   = false,
         mention = "<@&1485416881786720386>",
@@ -176,6 +176,11 @@ local wbaMainName = nil
 local wbaDebugMode = false
 local wbaDebugBoss = nil   -- fake boss name used for kill/loot testing in debug mode
 
+-- PVP flag scanner
+local wbaPvpScan        = false   -- toggle for active PVP scanning
+local wbaPvpScanTimer   = 0
+local wbaPvpScanInterval = 5      -- check every 5 seconds
+
 -------------------------------------------------------------------------------
 -- 4. UTILITY
 -------------------------------------------------------------------------------
@@ -258,6 +263,21 @@ local function wbaFindBossForCurrentZone(groupName)
         end
     end
     return nil
+end
+
+-- Find any non-quiet boss whose zone matches the current location.
+-- Used to auto-name clock-in/heartbeat messages when watching All.
+local function wbaDetectBossFromZone()
+    local current = GetZoneText() or ""
+    local sub     = (GetSubZoneText and GetSubZoneText()) or ""
+    for bossName, def in pairs(WBA_BOSSES) do
+        if not def.quite and def.zones and table.getn(def.zones) > 0 then
+            for _, z in ipairs(def.zones) do
+                if z == current or z == sub then return bossName, def.group end
+            end
+        end
+    end
+    return nil, nil
 end
 
 -- Send to a custom channel by name.
@@ -478,10 +498,14 @@ local function wbaHeartbeat()
         return
     end
     local where = wbaZone()
-    local group = "All"
+    local group
     if wbaScoutBoss then
         local def = WBA_BOSSES[wbaScoutBoss]
         group = def and def.group or wbaScoutBoss
+    else
+        -- Watching All — use zone to name the boss if we can detect one
+        local _, detectedGroup = wbaDetectBossFromZone()
+        group = detectedGroup or "All"
     end
     local msg = string.format("Main: %s is still watching %s [%s]", wbaScoutIdent(), group, where)
     wbaSendScout(msg)
@@ -579,7 +603,32 @@ local function wbaGetRaidRoster()
     return table.concat(members, ", ")
 end
 
--- Called when we detect a world boss kill
+-- Scan all raid members for PVP flag. Kick flagged members, whisper them the reason.
+local function wbaScanPvpFlags()
+    local n = GetNumRaidMembers()
+    if n == 0 then return end
+    for i = 1, n do
+        local name, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
+        if name and online then
+            local unit = "raid" .. i
+            -- UnitIsPVP returns true if the unit has PVP flag active
+            if UnitIsPVP and UnitIsPVP(unit) then
+                local myName = UnitName("player") or ""
+                if name ~= myName then
+                    wbaPrint("|cFFFF4444[PVP Scan]|r " .. name .. " is PVP flagged -- kicking.")
+                    -- Kick from raid
+                    UninviteByName(name)
+                    -- Whisper with instructions
+                    local whisper = "You were removed from the raid due to an active PVP flag. "
+                        .. "Please drop your flag then whisper to rejoin. "
+                        .. "To drop PVP flag: join a Battleground then AFK out, "
+                        .. "OR Hearthstone > take the flight path > get summoned back."
+                    SendChatMessage(whisper, "WHISPER", nil, name)
+                end
+            end
+        end
+    end
+end
 local function wbaLogKill(bossName)
     if not wbaRaidMode and not wbaDebugMode and not wbaZGMode then return end
     local name   = (wbaDebugMode and wbaDebugBoss) or bossName
@@ -959,6 +1008,15 @@ local function wbaOnUpdate()
         end
     end
 
+    -- PVP flag scanner — runs independently of scouting/raid state
+    if wbaPvpScan then
+        wbaPvpScanTimer = wbaPvpScanTimer + elapsed
+        if wbaPvpScanTimer >= wbaPvpScanInterval then
+            wbaPvpScanTimer = 0
+            wbaScanPvpFlags()
+        end
+    end
+
     if not wbaScouting then return end
 
     -- Boss scan every 30 seconds
@@ -1042,7 +1100,7 @@ end)
 -------------------------------------------------------------------------------
 local WBAPanel = CreateFrame("Frame", "WBAPanel", UIParent)
 WBAPanel:SetWidth(260)
-WBAPanel:SetHeight(370)
+WBAPanel:SetHeight(420)
 WBAPanel:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 WBAPanel:SetBackdrop({
     bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -1255,9 +1313,12 @@ wbaClockInBtn:SetScript("OnClick", function()
     else
         wbaScoutBoss = nil
         local where = wbaZone()
+        -- Use zone to name the boss if we can detect one
+        local _, detectedGroup = wbaDetectBossFromZone()
+        local watchLabel = detectedGroup or "ALL bosses"
         wbaSendChannel(WBA_SCOUT_CHANNEL,
-            string.format("Main: %s is now watching ALL bosses [%s]", wbaScoutIdent(), where))
-        wbaPrint("Clocked in for: All Bosses")
+            string.format("Main: %s is now watching %s [%s]", wbaScoutIdent(), watchLabel, where))
+        wbaPrint("Clocked in for: " .. watchLabel)
     end
 end)
 
@@ -1357,16 +1418,42 @@ wbaKillBtn:SetScript("OnClick", function()
     end
 end)
 
+-- PVP flag scanner button
+local wbaPvpScanBtn = CreateFrame("Button", nil, WBAPanel, "GameMenuButtonTemplate")
+wbaPvpScanBtn:SetWidth(180)
+wbaPvpScanBtn:SetHeight(22)
+wbaPvpScanBtn:SetText("PVP Scan: OFF")
+wbaPvpScanBtn:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -275)
+
+local function wbaRefreshPvpScanBtn()
+    if wbaPvpScan then
+        wbaPvpScanBtn:SetText("|cFFFF4444PVP Scan: ON|r")
+    else
+        wbaPvpScanBtn:SetText("PVP Scan: OFF")
+    end
+end
+
+wbaPvpScanBtn:SetScript("OnClick", function()
+    wbaPvpScan = not wbaPvpScan
+    wbaPvpScanTimer = 0
+    wbaRefreshPvpScanBtn()
+    if wbaPvpScan then
+        wbaPrint("|cFFFF4444PVP Scan ON|r -- checking raid every " .. wbaPvpScanInterval .. "s. Flagged members will be kicked.")
+    else
+        wbaPrint("PVP Scan OFF.")
+    end
+end)
+
 
 -- ── Main Name Input ────────────────────────────────────────────────────────
 local wbaMainLabel = WBAPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-wbaMainLabel:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -278)
+wbaMainLabel:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -308)
 wbaMainLabel:SetText("Your main (optional):")
 
 local wbaMainInput = CreateFrame("EditBox", "WBAMainInput", WBAPanel, "InputBoxTemplate")
 wbaMainInput:SetWidth(150)
 wbaMainInput:SetHeight(20)
-wbaMainInput:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -295)
+wbaMainInput:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -325)
 wbaMainInput:SetAutoFocus(false)
 wbaMainInput:SetMaxLetters(30)
 wbaMainInput:SetScript("OnEnterPressed", function()
@@ -1453,6 +1540,7 @@ end)
 WBAPanel:SetScript("OnShow", function()
     wbaRefreshScoutBtn()
     wbaRefreshRaidBtn()
+    wbaRefreshPvpScanBtn()
     wbaSyncBossDisplay()
     wbaMainInput:SetText(wbaMainName or "")
     wbaRefreshStatus()
@@ -1642,6 +1730,15 @@ function SlashCmdList.WBALERT(msg)
             wbaPrint("  In WBA targets : " .. (WBA_TARGET_SET[name] and "|cFF00FF00yes|r" or "|cFFFF4444no|r"))
         end
 
+    elseif msgLower == "pvpscan" then
+        wbaPvpScan = not wbaPvpScan
+        wbaPvpScanTimer = 0
+        if wbaPvpScan then
+            wbaPrint("|cFFFF4444PVP Scan ON|r -- flagged raid members will be kicked every " .. wbaPvpScanInterval .. "s.")
+        else
+            wbaPrint("PVP Scan OFF.")
+        end
+
     else
         wbaPrint("WorldBossAlert -- /wba or /wbalert")
         wbaPrint("  scout          - toggle scout mode")
@@ -1651,6 +1748,7 @@ function SlashCmdList.WBALERT(msg)
         wbaPrint("  zg             - toggle ZG mode (log ZG boss kills/loot, no alerts)")
         wbaPrint("  kill           - manually log kill (target boss first)")
         wbaPrint("  killtest       - send TEST kill log to verify channel")
+        wbaPrint("  pvpscan        - toggle PVP flag scanner (auto-kicks flagged members)")
         wbaPrint("  debug          - toggle debug mode (local only, no channel)")
         wbaPrint("  debugboss <n>  - set fake boss name for debug testing")
         wbaPrint("  inspect        - print target classification, level and type")
