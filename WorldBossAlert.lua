@@ -176,6 +176,9 @@ local wbaMainName = nil
 local wbaDebugMode = false
 local wbaDebugBoss = nil   -- fake boss name used for kill/loot testing in debug mode
 
+-- basic mode — locks boss selection to All, hides selector UI
+local wbaBasicMode = false
+
 -- PVP flag scanner
 local wbaPvpScan        = false   -- toggle for active PVP scanning
 local wbaPvpScanTimer   = 0
@@ -773,6 +776,7 @@ local function wbaOnEvent()
                 mainName  = nil,
                 debugMode = false,
                 zgMode    = false,
+                basicMode = false,
                 chars     = {},
             }
         end
@@ -793,6 +797,7 @@ local function wbaOnEvent()
         wbaMainName  = WorldBossAlertDB.mainName  or nil
         wbaDebugMode = WorldBossAlertDB.debugMode or false
         wbaZGMode    = WorldBossAlertDB.zgMode    or false
+        wbaBasicMode = WorldBossAlertDB.basicMode or false
 
         -- Register events based on saved state
         if wbaPvp then
@@ -839,6 +844,7 @@ local function wbaOnEvent()
         WorldBossAlertDB.mainName  = wbaMainName
         WorldBossAlertDB.debugMode = wbaDebugMode
         WorldBossAlertDB.zgMode    = wbaZGMode
+        WorldBossAlertDB.basicMode = wbaBasicMode
         -- Save scoutBoss per character
         local charName = UnitName("player") or "Unknown"
         if not WorldBossAlertDB.chars then WorldBossAlertDB.chars = {} end
@@ -1002,8 +1008,10 @@ local function wbaOnUpdate()
                 wbaClockIn(wbaScoutBoss)
             else
                 local where = wbaZone()
+                local _, detectedGroup = wbaDetectBossFromZone()
+                local watchLabel = detectedGroup or "ALL bosses"
                 wbaSendChannel(WBA_SCOUT_CHANNEL,
-                    string.format("Main: %s is now watching ALL bosses [%s]", wbaScoutIdent(), where))
+                    string.format("Main: %s is now watching %s [%s]", wbaScoutIdent(), watchLabel, where))
             end
         end
     end
@@ -1292,28 +1300,25 @@ wbaClockInBtn:SetScript("OnClick", function()
         local prevDef = WBA_BOSSES[wbaScoutBoss]
         wbaClockOut(prevDef and prevDef.group or wbaScoutBoss)
     end
-    local group = wbaBossGroups[wbaBossIndex]  -- nil = index 0 = "All"
+    -- In basic mode always use All (zone detection only)
+    local group = wbaBasicMode and nil or wbaBossGroups[wbaBossIndex]
     if group then
         -- For groups with multiple members (e.g. Emerald Dragons), find the boss
         -- whose zone matches the current zone rather than picking arbitrarily
         local targetBoss = wbaFindBossForCurrentZone(group)
         if targetBoss then
-            -- Zone matched a specific boss in this group
             wbaScoutBoss = targetBoss
             wbaClockIn(targetBoss)
         else
-            -- No zone match for any boss in this group
-            -- Pick any boss to get the group name for the error message
             local anyBoss = nil
             for bossName, bdef in pairs(WBA_BOSSES) do
                 if bdef.group == group then anyBoss = bossName break end
             end
-            if anyBoss then wbaClockIn(anyBoss) end  -- will print zone mismatch
+            if anyBoss then wbaClockIn(anyBoss) end
         end
     else
         wbaScoutBoss = nil
         local where = wbaZone()
-        -- Use zone to name the boss if we can detect one
         local _, detectedGroup = wbaDetectBossFromZone()
         local watchLabel = detectedGroup or "ALL bosses"
         wbaSendChannel(WBA_SCOUT_CHANNEL,
@@ -1537,13 +1542,51 @@ wbaMainClearBtn:SetScript("OnClick", function()
     wbaRefreshStatus()
 end)
 
+-- Apply or remove basic mode UI changes.
+-- In basic mode the boss selector is hidden and scoutBoss is always nil (All).
+local function wbaApplyBasicMode()
+    if wbaBasicMode then
+        wbaBossSelLabel:Hide()
+        wbaBossDisplay:Hide()
+        wbaBossPrevBtn:Hide()
+        wbaBossNextBtn:Hide()
+        -- Move everything up by 62px (the space the selector occupied)
+        wbaClockInBtn:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -96)
+        wbaRaidLabel:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -138)
+        wbaRaidBtn:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -161)
+        wbaKillBtn:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -187)
+        wbaPvpScanBtn:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -213)
+        wbaMainLabel:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -246)
+        wbaMainInput:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -263)
+        WBAPanel:SetHeight(355)
+        -- Force to All
+        wbaScoutBoss = nil
+        wbaBossIndex = 0
+    else
+        wbaBossSelLabel:Show()
+        wbaBossDisplay:Show()
+        wbaBossPrevBtn:Show()
+        wbaBossNextBtn:Show()
+        -- Restore all to original positions
+        wbaClockInBtn:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -158)
+        wbaRaidLabel:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -200)
+        wbaRaidBtn:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -223)
+        wbaKillBtn:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -249)
+        wbaPvpScanBtn:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -275)
+        wbaMainLabel:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -308)
+        wbaMainInput:SetPoint("TOPLEFT", WBAPanel, "TOPLEFT", 20, -325)
+        WBAPanel:SetHeight(420)
+        wbaSyncBossDisplay()
+    end
+end
+
 WBAPanel:SetScript("OnShow", function()
     wbaRefreshScoutBtn()
     wbaRefreshRaidBtn()
     wbaRefreshPvpScanBtn()
-    wbaSyncBossDisplay()
     wbaMainInput:SetText(wbaMainName or "")
     wbaRefreshStatus()
+    wbaApplyBasicMode()
 end)
 
 -------------------------------------------------------------------------------
@@ -1730,6 +1773,15 @@ function SlashCmdList.WBALERT(msg)
             wbaPrint("  In WBA targets : " .. (WBA_TARGET_SET[name] and "|cFF00FF00yes|r" or "|cFFFF4444no|r"))
         end
 
+    elseif msgLower == "basicmode" then
+        wbaBasicMode = not wbaBasicMode
+        wbaPrint("Basic mode " .. wbaFlag(wbaBasicMode))
+        if wbaBasicMode then
+            wbaScoutBoss = nil
+            wbaPrint("Boss selector hidden. Zone detection used for all clock-ins.")
+        end
+        if WBAPanel:IsShown() then wbaApplyBasicMode() end
+
     elseif msgLower == "pvpscan" then
         wbaPvpScan = not wbaPvpScan
         wbaPvpScanTimer = 0
@@ -1742,6 +1794,7 @@ function SlashCmdList.WBALERT(msg)
     else
         wbaPrint("WorldBossAlert -- /wba or /wbalert")
         wbaPrint("  scout          - toggle scout mode")
+        wbaPrint("  basicmode      - toggle basic mode (hides boss selector, uses zone detection)")
         wbaPrint("  main <n>       - set your main character name")
         wbaPrint("  main           - show current main name")
         wbaPrint("  raid           - toggle raid logging mode")
